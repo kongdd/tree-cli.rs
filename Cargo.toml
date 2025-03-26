@@ -1,0 +1,17 @@
+[package]
+name = "file-counter"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A tool to count files in directories"
+
+[dependencies]
+colored = "2.0.0"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
