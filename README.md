@@ -15,22 +15,17 @@ File Counter is a command-line tool designed to help you analyze your file syste
 - Skip hidden files and directories
 - Display count of files in each directory
 
-## Usage
+## Installation
 
 ```bash
 cargo install --git https://github.com/kongdd/file-counter
 ```
 
-### Basic Usage
+### Usage
 
 ```bash
 file-counter /path/to/directory
-```
-
-### With Extension Filter
-
-```bash
-file-counter /path/to/directory --ext exe
+file-counter /path/to/directory --ext exe # With Extension Filter
 ```
 
 ```bash
