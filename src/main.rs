@@ -119,6 +119,7 @@ fn main() {
     if min_size > 0 {
         println!("Filtering files smaller than: {}", format_size(min_size));
     }
+    // println!("");  // Add an empty line before results
 
     // Initialize stats counter
     let stats = Arc::new(Mutex::new(FileStats {
@@ -128,7 +129,8 @@ fn main() {
     }));
     
     let path = Path::new(dir_path);
-    list_files(path, "  ", path, ext, &ignore_dirs, Arc::clone(&stats), min_size);
+    // Call list_files with empty is_last_items vector for root directory
+    list_files(path, "", &[], path, ext, &ignore_dirs, Arc::clone(&stats), min_size);
     
     // Print summary statistics
     let elapsed = start_time.elapsed();
