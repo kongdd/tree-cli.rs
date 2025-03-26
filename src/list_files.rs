@@ -102,7 +102,6 @@ fn generate_tree_prefix(is_last_items: &[bool]) -> String {
             result.push_str("├── "); // Not the last item
         }
     }
-
     result
 }
 
@@ -190,29 +189,30 @@ pub fn list_files<P: AsRef<Path>>(
                 let tree_prefix = generate_tree_prefix(is_last_items);
                 print!("{}{}{} ", prefix, tree_prefix, dir_name.blue().bold());
                 if files_count > 0 {
-                    println!("({}, {})",
+                    print!(
+                        "({}, {})",
                         format!("{} files", files_count).green(),
-                        format_size(total_size).yellow());
-                } else {
-                    println!("");
+                        format_size(total_size).yellow()
+                    );
                 }
             } else {
                 // 根目录特殊处理
-                println!(
-                    "Directory: {} ({}, {})",
-                    dir_name.blue().bold(),
-                    format!("{} files", files_count).green(),
-                    format_size(total_size).yellow()
-                );
+                print!("Directory: {} ", dir_name.blue().bold());
+                if files_count > 0 {
+                    print!(
+                        "({}, {})",
+                        format!("{} files", files_count).green(),
+                        format_size(total_size).yellow()
+                    )
+                };
             }
+            println!("");
 
             // 更新总统计信息 - 添加当前目录的文件
-            {
-                let mut stats_guard = stats.lock().unwrap();
-                stats_guard.total_files += files_count;
-                stats_guard.total_dirs += 1; // 增加目录计数
-                stats_guard.total_bytes += total_size;
-            }
+            let mut stats_guard = stats.lock().unwrap();
+            stats_guard.total_files += files_count;
+            stats_guard.total_dirs += 1; // 增加目录计数
+            stats_guard.total_bytes += total_size;
         }
 
         // 处理子目录
