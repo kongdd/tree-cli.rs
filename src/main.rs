@@ -101,7 +101,7 @@ fn main() {
         }
     }
     
-    println!("Counting files in directory: {}", dir_path);
+    println!("Counting files in directory: {}", dir_path.blue());
     if !ext.is_empty() {
         println!("Filtering by extension: {}", ext);
     }
