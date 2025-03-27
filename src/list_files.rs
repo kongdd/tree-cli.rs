@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use crate::tree::TreeNode;
 use crate::format_size;
 
 // Structure to hold file counting statistics
@@ -12,6 +13,8 @@ pub struct FileStats {
     pub total_dirs: usize,
     pub total_bytes: u64,
 }
+
+
 
 /// 处理单个目录的文件和子目录
 fn process_directory_entries(
@@ -79,6 +82,79 @@ fn process_directory_entries(
     (files, dirs)
 }
 
+
+/// 构建文件系统的树结构
+pub fn build_directory_tree<P: AsRef<Path>>(
+    dir_path: P, 
+    ext: &str,
+    ignore_dirs: &[String],
+    min_size: u64
+) -> Option<TreeNode> {
+    let dir_path = dir_path.as_ref();
+    
+    match fs::read_dir(dir_path) {
+        Ok(entries) => {
+            let entries: Vec<_> = entries.filter_map(Result::ok).collect();
+            let (files, dirs) = process_directory_entries(entries, ext, ignore_dirs, min_size);
+            
+            // Create a directory node
+            let mut dir_node = TreeNode::new_directory(dir_path.to_path_buf());
+            
+            // Add all files to the directory
+            let mut total_files = 0;
+            let mut total_size = 0;
+            
+            // Process files
+            for (file_path, file_size) in files {
+                if let TreeNode::Directory { children, .. } = &mut dir_node {
+                    children.push(TreeNode::new_file(file_path, file_size));
+                    total_files += 1;
+                    total_size += file_size;
+                }
+            }
+            
+            // Process subdirectories
+            for subdir_path in dirs {
+                if let Some(subdir_node) = build_directory_tree(subdir_path, ext, ignore_dirs, min_size) {
+                    // Only add directories that have files (directly or in subdirs)
+                    let has_files = match &subdir_node {
+                        TreeNode::Directory { total_files, .. } => *total_files > 0,
+                        _ => false,
+                    };
+                    
+                    if has_files {
+                        if let TreeNode::Directory { children, .. } = &mut dir_node {
+                            // Update total counts
+                            if let TreeNode::Directory { total_files: subdir_files, total_size: subdir_size, .. } = &subdir_node {
+                                total_files += subdir_files;
+                                total_size += subdir_size;
+                            }
+                            children.push(subdir_node);
+                        }
+                    }
+                }
+            }
+            
+            // Update directory stats
+            if let TreeNode::Directory { total_files: ref mut tf, total_size: ref mut ts, .. } = dir_node {
+                *tf = total_files;
+                *ts = total_size;
+            }
+            
+            // Only return directory if it has files (directly or in subdirs)
+            match &dir_node {
+                TreeNode::Directory { total_files, .. } if *total_files > 0 => Some(dir_node),
+                _ => None,
+            }
+        },
+        Err(_) => {
+            eprintln!("Error accessing directory: {}", dir_path.display());
+            None
+        }
+    }
+}
+
+
 /// 生成树形结构的前缀
 fn generate_tree_prefix(is_last_items: &[bool]) -> String {
     let mut result = String::new();
@@ -105,171 +181,85 @@ fn generate_tree_prefix(is_last_items: &[bool]) -> String {
     result
 }
 
+/// 打印树结构
+pub fn print_tree(
+    node: &TreeNode,
+    prefix: &str,
+    is_last_items: &[bool], 
+    stats: &mut FileStats
+) {
+    match node {
+        TreeNode::Directory { name, children, total_files, total_size, .. } => {
+            // Display directory with file count and size
+            if !is_last_items.is_empty() {
+                let tree_prefix = generate_tree_prefix(is_last_items);
+                print!("{}{}{} ", prefix, tree_prefix, name.blue().bold());
+                if *total_files > 0 {
+                    print!(
+                        "({}, {})",
+                        format!("{} files", total_files).green(),
+                        format_size(*total_size).yellow()
+                    );
+                }
+            } else {
+                // Root directory special handling
+                print!("Directory: {} ", name.blue().bold());
+                if *total_files > 0 {
+                    print!(
+                        "({}, {})",
+                        format!("{} files", total_files).green(),
+                        format_size(*total_size).yellow()
+                    );
+                }
+            }
+            println!();
+            
+            // Update statistics
+            stats.total_dirs += 1;
+            stats.total_files += children.iter().filter(|child| matches!(child, TreeNode::File { .. })).count();
+            stats.total_bytes += *total_size;
+            
+            // Process children
+            for (idx, child) in children.iter().enumerate() {
+                let is_last = idx == children.len() - 1;
+                let mut new_is_last_items = is_last_items.to_vec();
+                new_is_last_items.push(is_last);
+                
+                print_tree(child, prefix, &new_is_last_items, stats);
+            }
+        },
+        TreeNode::File { .. } => {
+            // Individual files are not printed, they're summarized in the directory count
+        }
+    }
+}
+
 /// 主要的文件列表处理函数
 pub fn list_files<P: AsRef<Path>>(
     indir: P,
     prefix: &str,
     is_last_items: &[bool],
-    root: &Path,
+    _root: &Path,  // 添加下划线前缀表明这是一个有意未使用的变量
     ext: &str,
     ignore_dirs: &[String],
     stats: Arc<Mutex<FileStats>>,
     min_size: u64,
 ) {
-    let dir_path = indir.as_ref();
-
-    if let Ok(entries) = fs::read_dir(dir_path) {
-        // 预分配容量可以减少内存重新分配
-        let entries: Vec<_> = entries.filter_map(Result::ok).collect();
-
-        // 处理文件和目录条目
-        let (files, dirs) = process_directory_entries(entries, ext, ignore_dirs, min_size);
-
-        // 计算当前目录的统计信息
-        let files_count = files.len();
-        let total_size: u64 = files.iter().map(|(_, size)| *size).sum();
-
-        // 先处理所有子目录，检查它们是否包含匹配的文件
-        let mut subdirs_with_matches = Vec::new();
-        let mut has_matching_subdirs = false;
-
-        // 创建一个临时统计对象，用于检测子目录是否有匹配文件
-        let subdirs_stats = Arc::new(Mutex::new(FileStats {
+    // Build the tree structure
+    if let Some(tree) = build_directory_tree(indir, ext, ignore_dirs, min_size) {
+        // Print the tree
+        let mut local_stats = FileStats {
             total_files: 0,
             total_dirs: 0,
             total_bytes: 0,
-        }));
-
-        // 收集所有子目录并预处理它们来检查是否有匹配文件
-        for (idx, dir) in dirs.iter().enumerate() {
-            let is_last = idx == dirs.len() - 1;
-            let mut new_is_last_items = is_last_items.to_vec();
-            new_is_last_items.push(is_last);
-
-            // 创建一个临时统计对象来检测这个子目录是否有匹配文件
-            let subdir_stats = Arc::new(Mutex::new(FileStats {
-                total_files: 0,
-                total_dirs: 0,
-                total_bytes: 0,
-            }));
-
-            // 预先检查子目录是否有匹配文件（不打印）
-            check_subdir_for_matches(dir, ext, ignore_dirs, Arc::clone(&subdir_stats), min_size);
-
-            let subdir_stats = subdir_stats.lock().unwrap();
-            if subdir_stats.total_files > 0 {
-                has_matching_subdirs = true;
-                subdirs_with_matches.push((dir.clone(), is_last));
-
-                // 添加到总体子目录统计中
-                let mut total_stats = subdirs_stats.lock().unwrap();
-                total_stats.total_files += subdir_stats.total_files;
-                total_stats.total_bytes += subdir_stats.total_bytes;
-            }
-        }
-
-        // 决定是否显示当前目录
-        // 如果当前目录有文件或者它有包含匹配文件的子目录，则显示它
-        let should_display = files_count > 0 || has_matching_subdirs;
-
-        // 显示目录及其文件计数
-        if should_display {
-            let dir_name = if is_last_items.is_empty() {
-                // 这是根目录
-                dir_path.to_string_lossy().into_owned()
-            } else {
-                dir_path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| dir_path.to_string_lossy().into_owned())
-            };
-
-            // 显示目录及其文件计数
-            if !is_last_items.is_empty() {
-                let tree_prefix = generate_tree_prefix(is_last_items);
-                print!("{}{}{} ", prefix, tree_prefix, dir_name.blue().bold());
-                if files_count > 0 {
-                    print!(
-                        "({}, {})",
-                        format!("{} files", files_count).green(),
-                        format_size(total_size).yellow()
-                    );
-                }
-            } else {
-                // 根目录特殊处理
-                print!("Directory: {} ", dir_name.blue().bold());
-                if files_count > 0 {
-                    print!(
-                        "({}, {})",
-                        format!("{} files", files_count).green(),
-                        format_size(total_size).yellow()
-                    )
-                };
-            }
-            println!("");
-
-            // 更新总统计信息 - 添加当前目录的文件
-            let mut stats_guard = stats.lock().unwrap();
-            stats_guard.total_files += files_count;
-            stats_guard.total_dirs += 1; // 增加目录计数
-            stats_guard.total_bytes += total_size;
-        }
-
-        // 处理子目录
-        let new_prefix = prefix.to_string();
-
-        // 现在正常处理子目录
-        for (idx, dir) in dirs.iter().enumerate() {
-            let is_last = idx == dirs.len() - 1;
-            let mut new_is_last_items = is_last_items.to_vec();
-            new_is_last_items.push(is_last);
-
-            // 正常处理子目录
-            list_files(
-                dir,
-                &new_prefix,
-                &new_is_last_items,
-                root,
-                ext,
-                ignore_dirs,
-                Arc::clone(&stats),
-                min_size,
-            );
-        }
-    } else {
-        // 处理访问错误
-        eprintln!("Error accessing directory: {}", dir_path.display());
-    }
-}
-
-/// 检查子目录是否包含匹配文件而不打印任何输出
-fn check_subdir_for_matches<P: AsRef<Path>>(
-    dir: P,
-    ext: &str,
-    ignore_dirs: &[String],
-    stats: Arc<Mutex<FileStats>>,
-    min_size: u64,
-) {
-    let dir_path = dir.as_ref();
-
-    if let Ok(entries) = fs::read_dir(dir_path) {
-        let entries: Vec<_> = entries.filter_map(Result::ok).collect();
-        let (files, dirs) = process_directory_entries(entries, ext, ignore_dirs, min_size);
-
-        // 计算当前目录的统计信息
-        let files_count = files.len();
-        let total_size: u64 = files.iter().map(|(_, size)| *size).sum();
-
-        // 更新统计信息
-        {
-            let mut stats_guard = stats.lock().unwrap();
-            stats_guard.total_files += files_count;
-            stats_guard.total_bytes += total_size;
-        }
-
-        // 递归检查所有子目录
-        for subdir in dirs {
-            check_subdir_for_matches(&subdir, ext, ignore_dirs, Arc::clone(&stats), min_size);
-        }
+        };
+        
+        print_tree(&tree, prefix, is_last_items, &mut local_stats);
+        
+        // Update the global stats
+        let mut stats_guard = stats.lock().unwrap();
+        stats_guard.total_files += local_stats.total_files;
+        stats_guard.total_dirs += local_stats.total_dirs;
+        stats_guard.total_bytes += local_stats.total_bytes;
     }
 }

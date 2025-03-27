@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 mod file_size; 
 use file_size::{format_size, parse_size}; // Assuming file_size.rs is in the same directory
 
+mod tree;
 mod list_files;
 use list_files::{list_files, FileStats}; // Assuming list_files.rs is in the same directory
 
