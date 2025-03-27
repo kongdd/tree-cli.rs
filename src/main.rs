@@ -1,5 +1,6 @@
 use clap::Parser;
 use colored::*;
+use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -47,6 +48,10 @@ struct Cli {
     /// Limit search depth, 0 means unlimited
     #[arg(short = 'L', long = "level", default_value = "0")]
     max_depth: usize,
+
+    /// Filter files by pattern (supports glob patterns like *.rs)
+    #[arg(short = 'p', long = "pattern")]
+    pattern: Option<String>,
 }
 
 fn main() {
@@ -85,6 +90,28 @@ fn main() {
         }
     } else {
         u64::MAX // Maximum possible value
+    };
+
+    // Handle pattern matching
+    let pattern = if let Some(pattern_str) = &args.pattern {
+        // Convert glob pattern to regex pattern
+        let regex_pattern = pattern_str
+            .replace(".", "\\.")  // Escape dots
+            .replace("*", ".*")   // Convert * to .*
+            .replace("?", ".");   // Convert ? to .
+
+        match Regex::new(&regex_pattern) {
+            Ok(re) => {
+                println!("Filtering by pattern: {}", pattern_str);
+                Some(re)
+            },
+            Err(err) => {
+                eprintln!("Error parsing pattern: {}", err);
+                return;
+            }
+        }
+    } else {
+        None
     };
 
     println!("Counting files in directory: {}", dir_path.blue());
@@ -130,7 +157,8 @@ fn main() {
         max_size,
         args.include_children,
         args.show_stats_only,
-        args.max_depth,  // 添加这个参数
+        args.max_depth,
+        pattern.as_ref(),  // 传递正则表达式引用
     );
 
     // Print summary statistics

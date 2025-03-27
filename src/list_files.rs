@@ -1,8 +1,11 @@
 use rayon::prelude::*;
+use regex::Regex;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+// use crate::regex::Regex;
 use crate::tree::TreeNode;
 use crate::print::{print_tree_num, print_tree_file}; // 修改导入
 
@@ -21,6 +24,7 @@ fn process_directory_entries(
     ignore_dirs: &[String],
     min_size: u64,
     max_size: u64,  // 添加max_size参数
+    pattern: Option<&Regex>,  // 添加正则表达式参数
 ) -> (Vec<(PathBuf, u64)>, Vec<PathBuf>) {
     // 使用线程安全的数据结构来存储结果
     let files = Arc::new(Mutex::new(Vec::with_capacity(entries.len())));
@@ -58,6 +62,13 @@ fn process_directory_entries(
                     return; // 跳过不符合大小要求的文件
                 }
 
+                // 检查文件名是否匹配正则表达式
+                if let Some(pattern) = pattern {
+                    if !pattern.is_match(path.to_str().unwrap_or("")) {
+                        return;  // 跳过不匹配的文件
+                    }
+                }
+
                 if ext.is_empty() || path.extension().and_then(|e| e.to_str()) == Some(ext) {
                     let mut files = files.lock().unwrap();
                     files.push((path, file_size)); // 将文件大小一并保存
@@ -90,6 +101,7 @@ pub fn build_directory_tree<P: AsRef<Path>>(
     max_size: u64,  // 添加max_size参数
     current_depth: usize,  // 当前深度
     max_depth: usize,      // 最大深度，0表示不限制
+    pattern: Option<&Regex>,  // 添加正则表达式参数
 ) -> Option<TreeNode> {
     let dir_path = dir_path.as_ref();
     
@@ -101,7 +113,7 @@ pub fn build_directory_tree<P: AsRef<Path>>(
     match fs::read_dir(dir_path) {
         Ok(entries) => {
             let entries: Vec<_> = entries.filter_map(Result::ok).collect();
-            let (files, dirs) = process_directory_entries(entries, ext, ignore_dirs, min_size, max_size);
+            let (files, dirs) = process_directory_entries(entries, ext, ignore_dirs, min_size, max_size, pattern);
             
             // Create a directory node
             let mut dir_node = TreeNode::new_directory(dir_path.to_path_buf());
@@ -125,7 +137,7 @@ pub fn build_directory_tree<P: AsRef<Path>>(
             for subdir_path in dirs {
                 // 递归时增加深度计数
                 if let Some(subdir_node) = build_directory_tree(
-                    subdir_path, ext, ignore_dirs, min_size, max_size, current_depth + 1, max_depth
+                    subdir_path, ext, ignore_dirs, min_size, max_size, current_depth + 1, max_depth, pattern
                 ) {
                     // Only add directories that have files (directly or in subdirs)
                     let has_files = match &subdir_node {
@@ -187,9 +199,10 @@ pub fn list_files<P: AsRef<Path>>(
     include_children: bool,
     show_stats_only: bool, // 新增参数
     max_depth: usize,  // 添加max_depth参数
+    pattern: Option<&Regex>,  // 添加正则表达式参数
 ) {
     // 从深度1开始构建树结构
-    if let Some(tree) = build_directory_tree(indir, ext, ignore_dirs, min_size, max_size, 1, max_depth) {
+    if let Some(tree) = build_directory_tree(indir, ext, ignore_dirs, min_size, max_size, 1, max_depth, pattern) {
         if !show_stats_only {  // 修复括号错误
             // 使用print_tree_file打印完整的文件树结构
             let mut local_stats = FileStats {
