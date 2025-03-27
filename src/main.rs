@@ -13,9 +13,9 @@ use list_files::{list_files, FileStats}; // Assuming list_files.rs is in the sam
 
 
 fn print_help() {
-    println!("file_counter - Count files in directories");
+    println!("ntree - Count files in directories");
     println!("Usage:");
-    println!("  file_counter [OPTIONS] [DIRECTORY]");
+    println!("  ntree [OPTIONS] [DIRECTORY]");
     println!("\nOptions:");
     println!("  --ext EXT        Filter files by extension");
     println!("  --ignore DIR     Ignore directories with this name (can be used multiple times)");
@@ -24,11 +24,11 @@ fn print_help() {
     println!("  --help, -h       Show this help message");
     println!("  --version, -v    Show version information");
     println!("\nExamples:");
-    println!("  file_counter                       # Count all files in current directory");
-    println!("  file_counter /path/to/dir          # Count all files in specified directory");
-    println!("  file_counter --ext rs              # Count only Rust files");
-    println!("  file_counter --ignore node_modules # Ignore 'node_modules' directories");
-    println!("  file_counter --min-size 1MB        # Only count files larger than 1MB");
+    println!("  ntree                       # Count all files in current directory");
+    println!("  ntree /path/to/dir          # Count all files in specified directory");
+    println!("  ntree --ext rs              # Count only Rust files");
+    println!("  ntree --ignore node_modules # Ignore 'node_modules' directories");
+    println!("  ntree --min-size 1MB        # Only count files larger than 1MB");
 }
 
 fn main() {
@@ -42,7 +42,7 @@ fn main() {
     if args.len() > 1 {
         match args[1].as_str() {
             "--version" | "-v" => {
-                println!("file_counter v{}", env!("CARGO_PKG_VERSION"));
+                println!("ntree v{}", env!("CARGO_PKG_VERSION"));
                 return;
             },
             "--help" | "-h" => {

@@ -1,14 +1,10 @@
-# File Counter
+# ntree
 
-A utility for counting files in directories.
-
-避免了一个个数文件的困扰。
-
-## Overview
-
-File Counter is a command-line tool designed to help you analyze your file system by counting files. This project is currently under development.
+Count the files in directories
 
 ## Features
+
+![](./images/ntree.png)
 
 - Count files recursively in directories
 - Filter by file extension
@@ -18,18 +14,18 @@ File Counter is a command-line tool designed to help you analyze your file syste
 ## Installation
 
 ```bash
-cargo install --git https://github.com/kongdd/file-counter
+cargo install --git https://github.com/kongdd/tree-cli.rs
 ```
 
 ### Usage
 
 ```bash
-file-counter /path/to/directory
-file-counter /path/to/directory --ext exe # With Extension Filter
+ntree /path/to/directory
+ntree /path/to/directory --ext exe # With Extension Filter
 ```
 
 ```bash
-file-counter.exe Catchments/Camels-SPAT/observations
+ntree Catchments/Camels-SPAT/observations
 Counting files in directory: Catchments/Camels-SPAT/observations
         Catchments/Camels-SPAT/observations\Forcing\headwater\rdrs-lumped | 304
         Catchments/Camels-SPAT/observations\Forcing\macro-scale\rdrs-lumped | 395
@@ -39,3 +35,7 @@ Counting files in directory: Catchments/Camels-SPAT/observations
       Catchments/Camels-SPAT/observations\macro-scale\obs-hourly | 395
       Catchments/Camels-SPAT/observations\meso-scale\obs-hourly | 727
 ```
+
+## References
+
+- <https://github.com/peteretelej/tree>
