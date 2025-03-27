@@ -15,7 +15,6 @@ pub struct FileStats {
 }
 
 
-
 /// 处理单个目录的文件和子目录
 fn process_directory_entries(
     entries: Vec<fs::DirEntry>,
@@ -82,7 +81,6 @@ fn process_directory_entries(
     (files, dirs)
 }
 
-
 /// 构建文件系统的树结构
 pub fn build_directory_tree<P: AsRef<Path>>(
     dir_path: P, 
@@ -100,16 +98,18 @@ pub fn build_directory_tree<P: AsRef<Path>>(
             // Create a directory node
             let mut dir_node = TreeNode::new_directory(dir_path.to_path_buf());
             
-            // Add all files to the directory
-            let mut total_files = 0;
-            let mut total_size = 0;
+            // 先统计当前目录的直接文件
+            let direct_files = files.len();
+            let direct_size: u64 = files.iter().map(|(_, size)| *size).sum();
+            
+            // 初始化total等于direct的值
+            let mut total_files = direct_files;
+            let mut total_size = direct_size;
             
             // Process files
             for (file_path, file_size) in files {
                 if let TreeNode::Directory { children, .. } = &mut dir_node {
                     children.push(TreeNode::new_file(file_path, file_size));
-                    total_files += 1;
-                    total_size += file_size;
                 }
             }
             
@@ -124,7 +124,7 @@ pub fn build_directory_tree<P: AsRef<Path>>(
                     
                     if has_files {
                         if let TreeNode::Directory { children, .. } = &mut dir_node {
-                            // Update total counts
+                            // Update total counts by adding subdir values
                             if let TreeNode::Directory { total_files: subdir_files, total_size: subdir_size, .. } = &subdir_node {
                                 total_files += subdir_files;
                                 total_size += subdir_size;
@@ -136,9 +136,17 @@ pub fn build_directory_tree<P: AsRef<Path>>(
             }
             
             // Update directory stats
-            if let TreeNode::Directory { total_files: ref mut tf, total_size: ref mut ts, .. } = dir_node {
+            if let TreeNode::Directory { 
+                total_files: ref mut tf, 
+                total_size: ref mut ts, 
+                direct_files: ref mut df, 
+                direct_size: ref mut ds, 
+                .. 
+            } = dir_node {
                 *tf = total_files;
                 *ts = total_size;
+                *df = direct_files;
+                *ds = direct_size;
             }
             
             // Only return directory if it has files (directly or in subdirs)
@@ -153,7 +161,6 @@ pub fn build_directory_tree<P: AsRef<Path>>(
         }
     }
 }
-
 
 /// 生成树形结构的前缀
 fn generate_tree_prefix(is_last_items: &[bool]) -> String {
@@ -186,29 +193,39 @@ pub fn print_tree(
     node: &TreeNode,
     prefix: &str,
     is_last_items: &[bool], 
-    stats: &mut FileStats
+    stats: &mut FileStats,
+    include_children: bool,
 ) {
     match node {
-        TreeNode::Directory { name, children, total_files, total_size, .. } => {
+        TreeNode::Directory { name, children, total_files, total_size, direct_files, direct_size, .. } => {
+            // 使用新的字段，根据include_children选择显示方式
+            let (_total_files, _total_size) = if include_children {
+                (*total_files, *total_size)
+            } else {
+                (*direct_files, *direct_size)
+            };
+
             // Display directory with file count and size
             if !is_last_items.is_empty() {
                 let tree_prefix = generate_tree_prefix(is_last_items);
                 print!("{}{}{} ", prefix, tree_prefix, name.blue().bold());
-                if *total_files > 0 {
+                
+                if _total_files > 0 {
                     print!(
                         "({}, {})",
-                        format!("{} files", total_files).green(),
-                        format_size(*total_size).yellow()
+                        format!("{} files", _total_files).green(),
+                        format_size(_total_size).yellow()
                     );
                 }
             } else {
                 // Root directory special handling
                 print!("Directory: {} ", name.blue().bold());
-                if *total_files > 0 {
+                
+                if _total_files > 0 {
                     print!(
                         "({}, {})",
-                        format!("{} files", total_files).green(),
-                        format_size(*total_size).yellow()
+                        format!("{} files", _total_files).green(),
+                        format_size(_total_size).yellow()
                     );
                 }
             }
@@ -225,7 +242,7 @@ pub fn print_tree(
                 let mut new_is_last_items = is_last_items.to_vec();
                 new_is_last_items.push(is_last);
                 
-                print_tree(child, prefix, &new_is_last_items, stats);
+                print_tree(child, prefix, &new_is_last_items, stats, include_children);
             }
         },
         TreeNode::File { .. } => {
@@ -244,6 +261,7 @@ pub fn list_files<P: AsRef<Path>>(
     ignore_dirs: &[String],
     stats: Arc<Mutex<FileStats>>,
     min_size: u64,
+    include_children: bool, // 新增参数
 ) {
     // Build the tree structure
     if let Some(tree) = build_directory_tree(indir, ext, ignore_dirs, min_size) {
@@ -254,7 +272,7 @@ pub fn list_files<P: AsRef<Path>>(
             total_bytes: 0,
         };
         
-        print_tree(&tree, prefix, is_last_items, &mut local_stats);
+        print_tree(&tree, prefix, is_last_items, &mut local_stats, include_children);
         
         // Update the global stats
         let mut stats_guard = stats.lock().unwrap();

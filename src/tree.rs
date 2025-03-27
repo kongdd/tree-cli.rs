@@ -11,8 +11,10 @@ pub enum TreeNode {
         name: String,
         path: PathBuf,
         children: Vec<TreeNode>,
-        total_files: usize,
-        total_size: u64,
+        total_files: usize,    // 包含子目录的总文件数
+        total_size: u64,       // 包含子目录的总大小
+        direct_files: usize,   // 仅当前目录文件数
+        direct_size: u64,      // 仅当前目录文件大小
     },
 }
 
@@ -36,6 +38,8 @@ impl TreeNode {
             children: Vec::new(),
             total_files: 0,
             total_size: 0,
+            direct_files: 0,
+            direct_size: 0,
         }
     }
 

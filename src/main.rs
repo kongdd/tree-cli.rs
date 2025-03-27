@@ -20,6 +20,7 @@ fn print_help() {
     println!("  --ext EXT        Filter files by extension");
     println!("  --ignore DIR     Ignore directories with this name (can be used multiple times)");
     println!("  --min-size SIZE  Filter files smaller than SIZE (e.g. 1MB, 500KB, 10B)");
+    println!("  -c               Include child directory files in directory count");
     println!("  --help, -h       Show this help message");
     println!("  --version, -v    Show version information");
     println!("\nExamples:");
@@ -56,6 +57,7 @@ fn main() {
     let mut ext = ""; // Default to no extension filter
     let mut ignore_dirs: Vec<String> = vec![];
     let mut min_size: u64 = 0; // 默认不过滤文件大小
+    let mut include_children = false; // 默认不将子目录文件计入当前目录
 
     // Parse arguments
     let mut i = 1;
@@ -96,6 +98,10 @@ fn main() {
                     return;
                 }
             },
+            "-c" => {
+                include_children = true;
+                i += 1;
+            },
             arg => {
                 // First non-flag argument is the directory path
                 if !arg.starts_with('-') && dir_path == "." {
@@ -120,7 +126,9 @@ fn main() {
     if min_size > 0 {
         println!("Filtering files smaller than: {}", format_size(min_size));
     }
-    // println!("");  // Add an empty line before results
+    if include_children {
+        println!("Including child directory files in count");
+    }
 
     // Initialize stats counter
     let stats = Arc::new(Mutex::new(FileStats {
@@ -130,8 +138,8 @@ fn main() {
     }));
     
     let path = Path::new(dir_path);
-    // Call list_files with empty is_last_items vector for root directory
-    list_files(path, "", &[], path, ext, &ignore_dirs, Arc::clone(&stats), min_size);
+    // 传递 include_children 参数
+    list_files(path, "", &[], path, ext, &ignore_dirs, Arc::clone(&stats), min_size, include_children);
     
     // Print summary statistics
     let elapsed = start_time.elapsed();
