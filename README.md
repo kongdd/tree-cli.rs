@@ -6,10 +6,23 @@ Count the files in directories
 
 ![](./images/ntree.png)
 
-- Count files recursively in directories
-- Filter by file extension
-- Skip hidden files and directories
-- Display count of files in each directory
+```bash
+Usage: ntree.exe [OPTIONS] [DIRECTORY]
+
+Arguments:
+  [DIRECTORY]  Target directory, defaults to current directory [default: .]
+
+Options:
+      --ext <EXT>          Filter by file extension
+      --ignore <DIR>       Ignore directories with specified names
+      --min <SIZE>         Filter files smaller than specified size
+      --max <SIZE>         Filter files larger than specified size
+  -c, --children           Include child directory files in current directory statistics
+  -n, --num                Show only directory statistics, not the file tree
+  -L, --level <MAX_DEPTH>  Limit search depth, 0 means unlimited [default: 0]
+  -h, --help               Print help
+  -V, --version            Print version
+```
 
 ## Installation
 
@@ -22,18 +35,9 @@ cargo install --git https://github.com/kongdd/tree-cli.rs
 ```bash
 ntree /path/to/directory
 ntree /path/to/directory --ext exe # With Extension Filter
-```
-
-```bash
-ntree Catchments/Camels-SPAT/observations
-Counting files in directory: Catchments/Camels-SPAT/observations
-        Catchments/Camels-SPAT/observations\Forcing\headwater\rdrs-lumped | 304
-        Catchments/Camels-SPAT/observations\Forcing\macro-scale\rdrs-lumped | 395
-        Catchments/Camels-SPAT/observations\Forcing\meso-scale\rdrs-lumped | 727
-      Catchments/Camels-SPAT/observations\headwater\obs-daily | 304
-      Catchments/Camels-SPAT/observations\headwater\obs-hourly | 304
-      Catchments/Camels-SPAT/observations\macro-scale\obs-hourly | 395
-      Catchments/Camels-SPAT/observations\meso-scale\obs-hourly | 727
+ntree /path/to/directory --min 1MB # Only files larger than 1MB
+ntree /path/to/directory --max 100MB # Only files smaller than 100MB
+ntree /path/to/directory -L 2 # Limit directory depth to 2 levels
 ```
 
 ## References

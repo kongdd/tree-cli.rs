@@ -20,6 +20,7 @@ fn process_directory_entries(
     ext: &str,
     ignore_dirs: &[String],
     min_size: u64,
+    max_size: u64,  // 添加max_size参数
 ) -> (Vec<(PathBuf, u64)>, Vec<PathBuf>) {
     // 使用线程安全的数据结构来存储结果
     let files = Arc::new(Mutex::new(Vec::with_capacity(entries.len())));
@@ -51,10 +52,10 @@ fn process_directory_entries(
 
             // 已经有了元数据，直接使用
             if metadata.is_file() {
-                // 检查文件大小是否满足最小要求
+                // 检查文件大小是否满足最小和最大要求
                 let file_size = metadata.len();
-                if file_size < min_size {
-                    return; // 跳过小于指定大小的文件
+                if file_size < min_size || file_size > max_size {
+                    return; // 跳过不符合大小要求的文件
                 }
 
                 if ext.is_empty() || path.extension().and_then(|e| e.to_str()) == Some(ext) {
@@ -85,14 +86,22 @@ pub fn build_directory_tree<P: AsRef<Path>>(
     dir_path: P, 
     ext: &str,
     ignore_dirs: &[String],
-    min_size: u64
+    min_size: u64,
+    max_size: u64,  // 添加max_size参数
+    current_depth: usize,  // 当前深度
+    max_depth: usize,      // 最大深度，0表示不限制
 ) -> Option<TreeNode> {
     let dir_path = dir_path.as_ref();
+    
+    // 检查深度限制
+    if max_depth > 0 && current_depth > max_depth {
+        return None;
+    }
     
     match fs::read_dir(dir_path) {
         Ok(entries) => {
             let entries: Vec<_> = entries.filter_map(Result::ok).collect();
-            let (files, dirs) = process_directory_entries(entries, ext, ignore_dirs, min_size);
+            let (files, dirs) = process_directory_entries(entries, ext, ignore_dirs, min_size, max_size);
             
             // Create a directory node
             let mut dir_node = TreeNode::new_directory(dir_path.to_path_buf());
@@ -114,7 +123,10 @@ pub fn build_directory_tree<P: AsRef<Path>>(
             
             // Process subdirectories
             for subdir_path in dirs {
-                if let Some(subdir_node) = build_directory_tree(subdir_path, ext, ignore_dirs, min_size) {
+                // 递归时增加深度计数
+                if let Some(subdir_node) = build_directory_tree(
+                    subdir_path, ext, ignore_dirs, min_size, max_size, current_depth + 1, max_depth
+                ) {
                     // Only add directories that have files (directly or in subdirs)
                     let has_files = match &subdir_node {
                         TreeNode::Directory { total_files, .. } => *total_files > 0,
@@ -171,11 +183,13 @@ pub fn list_files<P: AsRef<Path>>(
     ignore_dirs: &[String],
     stats: Arc<Mutex<FileStats>>,
     min_size: u64,
+    max_size: u64,  // 添加max_size参数
     include_children: bool,
     show_stats_only: bool, // 新增参数
+    max_depth: usize,  // 添加max_depth参数
 ) {
-    // Build the tree structure
-    if let Some(tree) = build_directory_tree(indir, ext, ignore_dirs, min_size) {
+    // 从深度1开始构建树结构
+    if let Some(tree) = build_directory_tree(indir, ext, ignore_dirs, min_size, max_size, 1, max_depth) {
         if !show_stats_only {  // 修复括号错误
             // 使用print_tree_file打印完整的文件树结构
             let mut local_stats = FileStats {

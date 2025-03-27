@@ -12,48 +12,56 @@ mod tree;
 use file_size::{format_size, parse_size};
 use list_files::{list_files, FileStats};
 
-/// 命令行参数解析结构体
+/// Command line arguments structure
 #[derive(Parser)]
 #[command(author, version, about = "Count files in directories")]
 struct Cli {
-    /// 目标目录，默认为当前目录
+    /// Target directory, defaults to current directory
     #[arg(default_value = ".")]
     directory: PathBuf,
 
-    /// 按文件扩展名过滤
+    /// Filter by file extension
     #[arg(long, value_name = "EXT")]
     ext: Option<String>,
 
-    /// 忽略指定名称的目录
+    /// Ignore directories with specified names
     #[arg(long, value_name = "DIR", action = clap::ArgAction::Append)]
     ignore: Vec<String>,
 
-    /// 过滤小于指定大小的文件
-    #[arg(long = "min-size", value_name = "SIZE")]
+    /// Filter files smaller than specified size
+    #[arg(long = "min", value_name = "SIZE")]
     min_size: Option<String>,
+    
+    /// Filter files larger than specified size
+    #[arg(long = "max", value_name = "SIZE")]
+    max_size: Option<String>,
 
-    /// 将子目录文件计入当前目录统计
+    /// Include child directory files in current directory statistics
     #[arg(short = 'c', long = "children")]
     include_children: bool,
 
-    /// 只显示目录统计信息，不显示文件树
-    #[arg(long = "num")]
+    /// Show only directory statistics, not the file tree
+    #[arg(short = 'n', long = "num")]
     show_stats_only: bool,
+
+    /// Limit search depth, 0 means unlimited
+    #[arg(short = 'L', long = "level", default_value = "0")]
+    max_depth: usize,
 }
 
 fn main() {
     // Track execution time
     let start_time = Instant::now();
 
-    // 使用clap解析命令行参数
+    // Use clap to parse command line arguments
     let args = Cli::parse();
 
-    // 处理参数
+    // Process arguments
     let dir_path = args.directory.to_string_lossy();
     let ext = args.ext.unwrap_or_default();
     let ignore_dirs = args.ignore;
 
-    // 处理文件大小限制
+    // Handle minimum file size limit
     let min_size = if let Some(size_str) = args.min_size {
         match parse_size(&size_str) {
             Ok(size) => size,
@@ -64,6 +72,19 @@ fn main() {
         }
     } else {
         0
+    };
+    
+    // Handle maximum file size limit
+    let max_size = if let Some(size_str) = args.max_size {
+        match parse_size(&size_str) {
+            Ok(size) => size,
+            Err(err) => {
+                eprintln!("Error parsing size: {}", err);
+                return;
+            }
+        }
+    } else {
+        u64::MAX // Maximum possible value
     };
 
     println!("Counting files in directory: {}", dir_path.blue());
@@ -76,11 +97,17 @@ fn main() {
     if min_size > 0 {
         println!("Filtering files smaller than: {}", format_size(min_size));
     }
+    if max_size < u64::MAX {
+        println!("Filtering files larger than: {}", format_size(max_size));
+    }
     if args.include_children {
         println!("Including child directory files in count");
     }
     if args.show_stats_only {
         println!("Showing directory statistics only (no file tree)");
+    }
+    if args.max_depth > 0 {
+        println!("Maximum directory depth: {}", args.max_depth);
     }
 
     // Initialize stats counter
@@ -100,8 +127,10 @@ fn main() {
         &ignore_dirs,
         Arc::clone(&stats),
         min_size,
+        max_size,
         args.include_children,
         args.show_stats_only,
+        args.max_depth,  // 添加这个参数
     );
 
     // Print summary statistics
