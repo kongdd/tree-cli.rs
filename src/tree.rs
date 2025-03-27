@@ -9,7 +9,6 @@ pub enum TreeNode {
     },
     Directory {
         name: String,
-        path: PathBuf,
         files: Vec<TreeNode>,    // 只存储文件节点
         dirs: Vec<TreeNode>,     // 只存储目录节点
         total_files: usize,      // 包含子目录的总文件数
@@ -35,7 +34,6 @@ impl TreeNode {
             .unwrap_or_else(|| path.to_string_lossy().into_owned());
         TreeNode::Directory { 
             name, 
-            path, 
             files: Vec::new(),
             dirs: Vec::new(),
             total_files: 0,

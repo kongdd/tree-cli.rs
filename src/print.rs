@@ -102,9 +102,8 @@ pub fn print_tree_file(
 ) {
     match node {
         TreeNode::Directory { name, files, dirs, total_size, .. } => {
-            // 移除未使用的path变量
             // 显示目录名
-            if (!is_last_items.is_empty()) {
+            if !is_last_items.is_empty() {  // 移除多余的括号
                 let tree_prefix = generate_tree_prefix(is_last_items);
                 println!("{}{}{} ({})", prefix, tree_prefix, name.blue().bold(), format_size(*total_size).yellow());
             } else {
