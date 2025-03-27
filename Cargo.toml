@@ -9,6 +9,7 @@ description = "A tool to count files in directories"
 colored = "2.0.0"
 rayon = "1.7"  # 用于并行计算
 dashmap = "5.4.0"  # 线程安全的高性能哈希表
+clap = { version = "4.4", features = ["derive"] }  # 添加clap依赖
 
 [profile.release]
 opt-level = 3

@@ -1,120 +1,70 @@
+use clap::Parser;
 use colored::*;
-use std::env;
-use std::path::Path; // Add Path import
-use std::time::Instant;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
-mod file_size; 
-use file_size::{format_size, parse_size}; // Assuming file_size.rs is in the same directory
-
-mod tree;
+mod file_size;
 mod list_files;
-use list_files::{list_files, FileStats}; // Assuming list_files.rs is in the same directory
+mod print;
+mod tree;
 
+use file_size::{format_size, parse_size};
+use list_files::{list_files, FileStats};
 
-fn print_help() {
-    println!("ntree - Count files in directories");
-    println!("Usage:");
-    println!("  ntree [OPTIONS] [DIRECTORY]");
-    println!("\nOptions:");
-    println!("  --ext EXT        Filter files by extension");
-    println!("  --ignore DIR     Ignore directories with this name (can be used multiple times)");
-    println!("  --min-size SIZE  Filter files smaller than SIZE (e.g. 1MB, 500KB, 10B)");
-    println!("  -c               Include child directory files in directory count");
-    println!("  --help, -h       Show this help message");
-    println!("  --version, -v    Show version information");
-    println!("\nExamples:");
-    println!("  ntree                       # Count all files in current directory");
-    println!("  ntree /path/to/dir          # Count all files in specified directory");
-    println!("  ntree --ext rs              # Count only Rust files");
-    println!("  ntree --ignore node_modules # Ignore 'node_modules' directories");
-    println!("  ntree --min-size 1MB        # Only count files larger than 1MB");
+/// 命令行参数解析结构体
+#[derive(Parser)]
+#[command(author, version, about = "Count files in directories")]
+struct Cli {
+    /// 目标目录，默认为当前目录
+    #[arg(default_value = ".")]
+    directory: PathBuf,
+
+    /// 按文件扩展名过滤
+    #[arg(long, value_name = "EXT")]
+    ext: Option<String>,
+
+    /// 忽略指定名称的目录
+    #[arg(long, value_name = "DIR", action = clap::ArgAction::Append)]
+    ignore: Vec<String>,
+
+    /// 过滤小于指定大小的文件
+    #[arg(long = "min-size", value_name = "SIZE")]
+    min_size: Option<String>,
+
+    /// 将子目录文件计入当前目录统计
+    #[arg(short = 'c', long = "children")]
+    include_children: bool,
+
+    /// 只显示目录统计信息，不显示文件树
+    #[arg(long = "num")]
+    show_stats_only: bool,
 }
 
 fn main() {
     // Track execution time
     let start_time = Instant::now();
-    
-    // Get command line arguments
-    let args: Vec<String> = env::args().collect();
 
-    // Check for help or version flags first
-    if args.len() > 1 {
-        match args[1].as_str() {
-            "--version" | "-v" => {
-                println!("ntree v{}", env!("CARGO_PKG_VERSION"));
+    // 使用clap解析命令行参数
+    let args = Cli::parse();
+
+    // 处理参数
+    let dir_path = args.directory.to_string_lossy();
+    let ext = args.ext.unwrap_or_default();
+    let ignore_dirs = args.ignore;
+
+    // 处理文件大小限制
+    let min_size = if let Some(size_str) = args.min_size {
+        match parse_size(&size_str) {
+            Ok(size) => size,
+            Err(err) => {
+                eprintln!("Error parsing size: {}", err);
                 return;
-            },
-            "--help" | "-h" => {
-                print_help();
-                return;
-            },
-            _ => {}
-        }
-    }
-
-    let mut dir_path = "."; // Default to current directory
-    let mut ext = ""; // Default to no extension filter
-    let mut ignore_dirs: Vec<String> = vec![];
-    let mut min_size: u64 = 0; // 默认不过滤文件大小
-    let mut include_children = false; // 默认不将子目录文件计入当前目录
-
-    // Parse arguments
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--ext" => {
-                if i + 1 < args.len() {
-                    ext = &args[i + 1];
-                    i += 2;
-                } else {
-                    eprintln!("Error: --ext requires an extension argument");
-                    return;
-                }
-            },
-            "--ignore" => {
-                if i + 1 < args.len() {
-                    ignore_dirs.push(args[i + 1].clone());
-                    i += 2;
-                } else {
-                    eprintln!("Error: --ignore requires a directory name argument");
-                    return;
-                }
-            },
-            "--min-size" => {
-                if i + 1 < args.len() {
-                    match parse_size(&args[i + 1]) {
-                        Ok(size) => {
-                            min_size = size;
-                            i += 2;
-                        },
-                        Err(err) => {
-                            eprintln!("Error parsing size: {}", err);
-                            return;
-                        }
-                    }
-                } else {
-                    eprintln!("Error: --min-size requires a size argument");
-                    return;
-                }
-            },
-            "-c" => {
-                include_children = true;
-                i += 1;
-            },
-            arg => {
-                // First non-flag argument is the directory path
-                if !arg.starts_with('-') && dir_path == "." {
-                    dir_path = arg;
-                    i += 1;
-                } else {
-                    eprintln!("Unknown argument: {}", arg);
-                    print_help();
-                    return;
-                }
             }
         }
-    }
+    } else {
+        0
+    };
 
     println!("Counting files in directory: {}", dir_path.blue());
     if !ext.is_empty() {
@@ -126,8 +76,11 @@ fn main() {
     if min_size > 0 {
         println!("Filtering files smaller than: {}", format_size(min_size));
     }
-    if include_children {
+    if args.include_children {
         println!("Including child directory files in count");
+    }
+    if args.show_stats_only {
+        println!("Showing directory statistics only (no file tree)");
     }
 
     // Initialize stats counter
@@ -136,16 +89,32 @@ fn main() {
         total_dirs: 0,
         total_bytes: 0,
     }));
-    
-    let path = Path::new(dir_path);
-    // 传递 include_children 参数
-    list_files(path, "", &[], path, ext, &ignore_dirs, Arc::clone(&stats), min_size, include_children);
-    
+
+    let path = Path::new(&args.directory);
+    list_files(
+        path,
+        "",
+        &[],
+        path,
+        &ext,
+        &ignore_dirs,
+        Arc::clone(&stats),
+        min_size,
+        args.include_children,
+        args.show_stats_only,
+    );
+
     // Print summary statistics
     let elapsed = start_time.elapsed();
     let stats = stats.lock().unwrap();
     println!("\n{}", "Summary:".yellow().bold());
-    println!("Total files : {}", stats.total_files.to_string().blue().bold());
-    println!("Total size  : {}", format_size(stats.total_bytes).green().bold());
+    println!(
+        "Total files : {}",
+        stats.total_files.to_string().blue().bold()
+    );
+    println!(
+        "Total size  : {}",
+        format_size(stats.total_bytes).green().bold()
+    );
     println!("Time elapsed: {:.2?}", elapsed);
 }

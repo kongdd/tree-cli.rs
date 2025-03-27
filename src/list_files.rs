@@ -1,11 +1,10 @@
-use colored::Colorize;
 use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::tree::TreeNode;
-use crate::format_size;
+use crate::print::{print_tree_num, print_tree_file}; // 修改导入
 
 // Structure to hold file counting statistics
 pub struct FileStats {
@@ -108,8 +107,8 @@ pub fn build_directory_tree<P: AsRef<Path>>(
             
             // Process files
             for (file_path, file_size) in files {
-                if let TreeNode::Directory { children, .. } = &mut dir_node {
-                    children.push(TreeNode::new_file(file_path, file_size));
+                if let TreeNode::Directory { files, .. } = &mut dir_node {
+                    files.push(TreeNode::new_file(file_path, file_size));
                 }
             }
             
@@ -123,13 +122,13 @@ pub fn build_directory_tree<P: AsRef<Path>>(
                     };
                     
                     if has_files {
-                        if let TreeNode::Directory { children, .. } = &mut dir_node {
+                        if let TreeNode::Directory { dirs, .. } = &mut dir_node {
                             // Update total counts by adding subdir values
                             if let TreeNode::Directory { total_files: subdir_files, total_size: subdir_size, .. } = &subdir_node {
                                 total_files += subdir_files;
                                 total_size += subdir_size;
                             }
-                            children.push(subdir_node);
+                            dirs.push(subdir_node);
                         }
                     }
                 }
@@ -162,95 +161,6 @@ pub fn build_directory_tree<P: AsRef<Path>>(
     }
 }
 
-/// 生成树形结构的前缀
-fn generate_tree_prefix(is_last_items: &[bool]) -> String {
-    let mut result = String::new();
-
-    // Handle parent levels
-    if !is_last_items.is_empty() {
-        for &is_last in &is_last_items[..is_last_items.len() - 1] {
-            if is_last {
-                result.push_str("    "); // Space where vertical line would be
-            } else {
-                result.push_str("│   "); // Vertical line with space
-            }
-        }
-    }
-
-    // Handle current level
-    if let Some(&is_last) = is_last_items.last() {
-        if is_last {
-            result.push_str("└── "); // Last item in its level
-        } else {
-            result.push_str("├── "); // Not the last item
-        }
-    }
-    result
-}
-
-/// 打印树结构
-pub fn print_tree(
-    node: &TreeNode,
-    prefix: &str,
-    is_last_items: &[bool], 
-    stats: &mut FileStats,
-    include_children: bool,
-) {
-    match node {
-        TreeNode::Directory { name, children, total_files, total_size, direct_files, direct_size, .. } => {
-            // 使用新的字段，根据include_children选择显示方式
-            let (_total_files, _total_size) = if include_children {
-                (*total_files, *total_size)
-            } else {
-                (*direct_files, *direct_size)
-            };
-
-            // Display directory with file count and size
-            if !is_last_items.is_empty() {
-                let tree_prefix = generate_tree_prefix(is_last_items);
-                print!("{}{}{} ", prefix, tree_prefix, name.blue().bold());
-                
-                if _total_files > 0 {
-                    print!(
-                        "({}, {})",
-                        format!("{} files", _total_files).green(),
-                        format_size(_total_size).yellow()
-                    );
-                }
-            } else {
-                // Root directory special handling
-                print!("Directory: {} ", name.blue().bold());
-                
-                if _total_files > 0 {
-                    print!(
-                        "({}, {})",
-                        format!("{} files", _total_files).green(),
-                        format_size(_total_size).yellow()
-                    );
-                }
-            }
-            println!();
-            
-            // Update statistics
-            stats.total_dirs += 1;
-            stats.total_files += children.iter().filter(|child| matches!(child, TreeNode::File { .. })).count();
-            stats.total_bytes += *total_size;
-            
-            // Process children
-            for (idx, child) in children.iter().enumerate() {
-                let is_last = idx == children.len() - 1;
-                let mut new_is_last_items = is_last_items.to_vec();
-                new_is_last_items.push(is_last);
-                
-                print_tree(child, prefix, &new_is_last_items, stats, include_children);
-            }
-        },
-        TreeNode::File { .. } => {
-            // Individual files are not printed, they're summarized in the directory count
-        }
-    }
-}
-
 /// 主要的文件列表处理函数
 pub fn list_files<P: AsRef<Path>>(
     indir: P,
@@ -261,23 +171,41 @@ pub fn list_files<P: AsRef<Path>>(
     ignore_dirs: &[String],
     stats: Arc<Mutex<FileStats>>,
     min_size: u64,
-    include_children: bool, // 新增参数
+    include_children: bool,
+    show_stats_only: bool, // 新增参数
 ) {
     // Build the tree structure
     if let Some(tree) = build_directory_tree(indir, ext, ignore_dirs, min_size) {
-        // Print the tree
-        let mut local_stats = FileStats {
-            total_files: 0,
-            total_dirs: 0,
-            total_bytes: 0,
-        };
-        
-        print_tree(&tree, prefix, is_last_items, &mut local_stats, include_children);
-        
-        // Update the global stats
-        let mut stats_guard = stats.lock().unwrap();
-        stats_guard.total_files += local_stats.total_files;
-        stats_guard.total_dirs += local_stats.total_dirs;
-        stats_guard.total_bytes += local_stats.total_bytes;
+        if !show_stats_only {  // 修复括号错误
+            // 使用print_tree_file打印完整的文件树结构
+            let mut local_stats = FileStats {
+                total_files: 0,
+                total_dirs: 0,
+                total_bytes: 0,
+            };
+            
+            print_tree_file(&tree, prefix, is_last_items, &mut local_stats);
+            
+            // Update the global stats
+            let mut stats_guard = stats.lock().unwrap();
+            stats_guard.total_files += local_stats.total_files;
+            stats_guard.total_dirs += local_stats.total_dirs;
+            stats_guard.total_bytes += local_stats.total_bytes;
+        } else {
+            // 使用print_tree_num打印目录统计信息
+            let mut local_stats = FileStats {
+                total_files: 0,
+                total_dirs: 0,
+                total_bytes: 0,
+            };
+            
+            print_tree_num(&tree, prefix, is_last_items, &mut local_stats, include_children);
+            
+            // Update the global stats
+            let mut stats_guard = stats.lock().unwrap();
+            stats_guard.total_files += local_stats.total_files;
+            stats_guard.total_dirs += local_stats.total_dirs;
+            stats_guard.total_bytes += local_stats.total_bytes;
+        }
     }
 }
