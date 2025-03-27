@@ -17,9 +17,9 @@ use list_files::{list_files, FileStats};
 #[derive(Parser)]
 #[command(author, version, about = "Count files in directories")]
 struct Cli {
-    /// Target directory, defaults to current directory
+    /// Target paths, can include directories and patterns, defaults to current directory
     #[arg(default_value = ".")]
-    directory: PathBuf,
+    paths: Vec<String>,
 
     /// Filter by file extension
     #[arg(long, value_name = "EXT")]
@@ -61,10 +61,18 @@ fn main() {
     // Use clap to parse command line arguments
     let args = Cli::parse();
 
-    // Process arguments
-    let dir_path = args.directory.to_string_lossy();
+    // Process arguments - 分离目录和模式
+    let (directory, pattern_from_args) = process_paths(&args.paths);
+    let dir_path = directory.to_string_lossy();
     let ext = args.ext.unwrap_or_default();
     let ignore_dirs = args.ignore;
+
+    // 如果从命令行参数中解析出了模式，优先使用它
+    let pattern_str = if !pattern_from_args.is_empty() {
+        Some(pattern_from_args)
+    } else {
+        args.pattern.clone()
+    };
 
     // Handle minimum file size limit
     let min_size = if let Some(size_str) = args.min_size {
@@ -93,7 +101,7 @@ fn main() {
     };
 
     // Handle pattern matching
-    let pattern = if let Some(pattern_str) = &args.pattern {
+    let pattern = if let Some(pattern_str) = &pattern_str {
         // Convert glob pattern to regex pattern
         let regex_pattern = pattern_str
             .replace(".", "\\.")  // Escape dots
@@ -144,7 +152,7 @@ fn main() {
         total_bytes: 0,
     }));
 
-    let path = Path::new(&args.directory);
+    let path = Path::new(&directory);
     list_files(
         path,
         "",
@@ -174,4 +182,52 @@ fn main() {
         format_size(stats.total_bytes).green().bold()
     );
     println!("Time elapsed: {:.2?}", elapsed);
+}
+
+/// 处理输入路径，将其分割为目录和模式
+fn process_paths(paths: &[String]) -> (PathBuf, String) {
+    if paths.is_empty() {
+        return (PathBuf::from("."), String::new());
+    }
+    
+    // 查找含有通配符的参数
+    let mut directory = PathBuf::from(".");
+    let mut pattern = String::new();
+    
+    for path in paths {
+        // 检查路径是否包含通配符
+        if path.contains('*') || path.contains('?') {
+            // 处理类似 ./**.exe 或 dir/*.txt 的情况
+            if let Some(pos) = path.rfind('/') {
+                // 分割目录和模式
+                let (dir_part, pat_part) = path.split_at(pos + 1);
+                if !pat_part.is_empty() {
+                    pattern = pat_part.to_string();
+                    
+                    // 如果目录部分不为空，设置为目录
+                    if dir_part != "./" && dir_part != "/" {
+                        directory = PathBuf::from(dir_part.trim_end_matches('/'));
+                    }
+                }
+            } else {
+                // 没有路径分隔符，整个是模式
+                pattern = path.clone();
+            }
+        } else {
+            // 没有通配符的参数视为目录
+            directory = PathBuf::from(path);
+        }
+    }
+    
+    // 如果只有一个参数且它是模式，使用当前目录
+    if directory == PathBuf::from(".") && !pattern.is_empty() && paths.len() == 1 {
+        // 保持当前目录
+    } else if pattern.is_empty() && paths.len() == 1 {
+        // 如果只有一个参数且不含通配符，视为目录
+        directory = PathBuf::from(&paths[0]);
+    }
+    
+    // 调试打印
+    // println!("解析结果 - 目录: {:?}, 模式: {}", directory, pattern);
+    (directory, pattern)
 }
