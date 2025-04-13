@@ -54,7 +54,8 @@ pub fn print_tree_num(
                 
                 if _total_files > 0 {
                     print!(
-                        "({}, {})",
+                        "({} dirs, {}, {})",
+                        dirs.len().to_string().cyan(),
                         format!("{} files", _total_files).green(),
                         format_size(_total_size).yellow()
                     );
@@ -65,7 +66,8 @@ pub fn print_tree_num(
                 
                 if _total_files > 0 {
                     print!(
-                        "({}, {})",
+                        "({} dirs, {}, {})",
+                        dirs.len().to_string().cyan(),
                         format!("{} files", _total_files).green(),
                         format_size(_total_size).yellow()
                     );
@@ -105,10 +107,10 @@ pub fn print_tree_file(
             // 显示目录名
             if !is_last_items.is_empty() {  // 移除多余的括号
                 let tree_prefix = generate_tree_prefix(is_last_items);
-                println!("{}{}{} ({})", prefix, tree_prefix, name.blue().bold(), format_size(*total_size).yellow());
+                println!("{}{}{} ({} dirs, {})", prefix, tree_prefix, name.blue().bold(), dirs.len().to_string().cyan(), format_size(*total_size).yellow());
             } else {
                 // 根目录特殊处理
-                println!("Directory: {} ({})", name.blue().bold(), format_size(*total_size).yellow());
+                println!("Directory: {} ({} dirs, {})", name.blue().bold(), dirs.len().to_string().cyan(), format_size(*total_size).yellow());
             }
             
             // 更新统计信息

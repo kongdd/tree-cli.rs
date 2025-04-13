@@ -178,6 +178,10 @@ fn main() {
         stats.total_files.to_string().blue().bold()
     );
     println!(
+        "Total dirs  : {}",
+        stats.total_dirs.to_string().blue().bold()
+    );
+    println!(
         "Total size  : {}",
         format_size(stats.total_bytes).green().bold()
     );
