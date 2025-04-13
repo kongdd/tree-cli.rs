@@ -172,6 +172,14 @@ fn main() {
     // Print summary statistics
     let elapsed = start_time.elapsed();
     let stats = stats.lock().unwrap();
+    // 计算需要减去的目录数量
+    let mut num_exclude_dirs = 0;
+    for path in &args.paths {
+        let path = Path::new(path);
+        if path.is_dir() {
+            num_exclude_dirs += 1;
+        }
+    }
     println!("\n{}", "Summary:".yellow().bold());
     println!(
         "Total files : {}",
@@ -179,7 +187,7 @@ fn main() {
     );
     println!(
         "Total dirs  : {}",
-        stats.total_dirs.to_string().blue().bold()
+        (stats.total_dirs.saturating_sub(num_exclude_dirs)).to_string().blue().bold()
     );
     println!(
         "Total size  : {}",
